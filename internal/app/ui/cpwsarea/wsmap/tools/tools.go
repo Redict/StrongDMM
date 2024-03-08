@@ -25,7 +25,7 @@ const (
 
 func init() {
 	window.RunRepeat(func() {
-		process(imguiext.IsAltDown()) // Enable tools alt-behaviour when Alt button is down.
+		process(imguiext.IsCtrlDown()) // Enable tools alt-behaviour when Alt button is down.
 	})
 }
 
