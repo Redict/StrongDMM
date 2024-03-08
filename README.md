@@ -165,4 +165,4 @@ The application icon is designed by [Clément "Topy"](https://github.com/clement
 
 ## License
 
-See the LICENSE file for license rights and limitations (GPL-3.0).
+See the LICENSE file for license rights and limitations (GPL-3.0)..
