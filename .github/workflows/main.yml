@@ -1,0 +1,114 @@
+name: main
+on: [ push, pull_request ]
+jobs:
+  lint-source-code:
+    name: Lint Source Code
+    runs-on: macos-11 # use macOS to avoid installation of desktop deps
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Golang
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: v1.52.2
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-22.04, windows-2019, macos-11 ]
+        include:
+          - os: ubuntu-22.04
+            rust-target: 1.69-x86_64-unknown-linux-gnu
+          - os: windows-2019
+            rust-target: 1.69-x86_64-pc-windows-gnu
+          - os: macos-11
+            rust-target: 1.69-x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    name: Build - ${{ matrix.os }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - if: contains(matrix.os, 'ubuntu')
+        name: Dependencies (Linux)
+        run: |
+          sudo apt clean
+          sudo apt update
+          sudo apt install xorg-dev libgtk-3-dev
+
+      - name: Setup Golang
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Rust
+        run: |
+          rustup install ${{ matrix.rust-target }}
+          rustup default ${{ matrix.rust-target }}
+
+      - name: Setup Task
+        uses: arduino/setup-task@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: third_party/sdmmparser/src
+
+      - if: contains(matrix.os, 'windows')
+        name: Pre Build (Windows)
+        run: task task_win:gen_syso
+
+      - name: Build
+        run: task build
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ runner.os }}
+          path: dst/*
+          if-no-files-found: error
+
+  release:
+    name: Release
+    runs-on: ubuntu-22.04
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') # if tag starts with "v"
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+    
+      - name: Setup Task
+        uses: arduino/setup-task@v1
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Release Files
+        uses: actions/download-artifact@v3
+        with:
+          path: dst/
+
+      - name: Prepare Release Files
+        run: task release-files
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          draft: true
+          prerelease: false
+          files: |
+            dst/bin/**
+            dst/archive/**
